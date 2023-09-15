@@ -1,0 +1,89 @@
+#!/bin/bash
+
+# Función para imprimir la barra de carga dinámica
+print_dynamic_progress_bar() {
+  local width=40  # Ancho total de la barra de carga
+  local percent=0
+  local increment=2
+
+  while [ "$percent" -le 100 ]; do
+    printf "\r["
+    local num_chars=$((width * percent / 100))
+    for ((i = 0; i < width; i++)); do
+      if [ "$i" -lt "$num_chars" ]; then
+        printf "#"
+      else
+        printf " "
+      fi
+    done
+    printf "] %d%%" "$percent"
+
+    # Incrementa el porcentaje
+    percent=$((percent + increment))
+
+    # Pausa corta para efecto dinámico
+    sleep 0.1
+  done
+  echo
+}
+
+# Verifica si se proporciona un argumento (el host a verificar)
+if [ $# -eq 0 ]; then
+  echo "Uso: $0 <nombre del host o dirección IP>"
+  exit 1
+fi
+
+host=$1
+
+# Verifica si el host es válido
+if ! ping -c 1 -w 1 "$host" > /dev/null 2>&1; then
+  echo "[-] El host $host no está activo o no se puede alcanzar."
+  exit 1
+fi
+
+# Número de pings que se enviarán
+num_pings=3
+
+# Redirige la salida estándar a /dev/null para ocultar los mensajes de ping
+exec 3>&1
+exec 1>/dev/null
+
+# Realiza el ping al host y redirige la salida de error estándar a /dev/null
+echo "Realizando ping a $host..."
+for ((i = 1; i <= num_pings; i++)); do
+  ping -c 1 "$host" > /dev/null 2>&1
+done
+
+# Restaura la salida estándar
+exec 1>&3
+
+# Imprime la barra de carga dinámica
+print_dynamic_progress_bar
+
+# Verifica el código de retorno del último ping
+if [ $? -eq 0 ]; then
+  echo "[+] El host $host está activo."
+
+  # Realiza un ping adicional para obtener más detalles
+  ping_result=$(ping -c 3 "$host" 2> /dev/null)
+
+  # Extraer el valor TTL
+  ttl=$(echo "$ping_result" | grep -oP "ttl=\K\d+" | head -n 1)
+
+  # Extraer el tiempo de respuesta
+  tiempo_respuesta=$(echo "$ping_result" | grep -oP "time=\K[\d\.]+" | tail -n 1)
+  if [ -n "$tiempo_respuesta" ]; then
+    echo "[+] El tiempo de respuesta de $host es de $tiempo_respuesta ms"
+  else
+    echo "[-] El tiempo de respuesta de $host no está disponible"
+  fi
+
+  # Determinar si es una máquina Linux o Windows basado en el valor TTL
+  if [ "$ttl" -le 64 ]; then
+    echo "[+] El Sistema Operativo posiblemente sea Linux o BSD"
+  else
+    echo "[+] El Sistema Operativo posiblemente sea Windows"
+  fi
+else
+  echo "[-] El host $host no está activo o no se puede alcanzar."
+fi
